@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Registro de Colas (Multicliente Offline)</title>
+    
+    <!-- 1. Cargar React y ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+    
+    <!-- 2. Cargar Babel para transpilar JSX -->
+    <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
+    
+    <!-- 3. Cargar Librería de Excel (SheetJS) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    
+    <!-- 4. Cargar Tailwind CSS (Sigue siendo necesario para las clases de utilidad) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- 5. Cargar Fuente Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    
+    <!-- 6. Enlazar nuestra Hoja de Estilos local -->
+    <link rel="stylesheet" href="estilos/styles.css">
+</head>
+<body class="bg-gray-100">
+    <!-- Contenedor raíz para la app React -->
+    <div id="root"></div>
+
+    <!-- 
+      7. Cargar nuestro script de la aplicación local.
+    -->
+    <script type="text/babel" src="scripts/app.js"></script>
+</body>
+</html>
