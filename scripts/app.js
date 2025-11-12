@@ -338,6 +338,30 @@ const App = () => {
         });
     };
 
+    //FUNCIÓN PARA BORRAR TODO
+    const confirmDeleteAllData = () => {
+        setModalState({
+            isOpen: true,
+            message: `¿Seguro que quieres borrar todos los registros guardados?`,
+            onConfirm: () => {
+                // Limpiar LocalStorage
+                try {
+                  localStorage.removeItem(STORAGE_KEY_DATA);
+                  localStorage.removeItem(STORAGE_KEY_STATS);
+                } catch (e) {
+                  setError("Error al borrar datos al limpiar el almacenamiento local");
+                  console.error("Error al borrar localstorage:", e);
+                }
+
+                // Limpiar Estados
+                setDataEntries([]);
+                setStats({ maxCashierQueue: 0, maxPrepQueue: 0 });
+                closeModal();
+                setNotification("Todos los datos locales fueron borrados.");
+            }
+        });
+    }
+
     // --- FUNCIÓN DE EXPORTACIÓN A EXCEL ---
     const exportToExcel = () => {
         if (dataEntries.length === 0) {
@@ -574,6 +598,13 @@ const App = () => {
                             ))}
                         </div>
                     )}
+                    {/* BOTÓN BORRAR DATOS */}
+                    <button
+                        onClick={confirmDeleteAllData}
+                        className={`btn btn-delete bg-red-600 hover:bg-red-700 btn-lg mt-4`}
+                    >
+                        Borrar Datos Guardados
+                    </button>
                 </div>
             </main>
         </React.Fragment>
@@ -729,6 +760,7 @@ const SavedEntryRow = ({ entry, onDelete }) => (
         </div>
     </div>
 );
+
 
 // --- Montar la Aplicación React ---
 // Obtenemos el div 'root' del index.html
