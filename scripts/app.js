@@ -476,8 +476,8 @@ const App = () => {
     	// 2. Preparar Hoja 2: Resumen de Salidas
     	const headers2 = ["Dato de Salida (Resumen)", "Valor"];
     	const summaryData = [
-        	// AÑADIDO: Máximo en Cola de Caja
-        	{ "Dato de Salida (Resumen)": "Número Máx. Clientes en Cola de Caja", "Valor": stats.maxCashierQueue },
+    		{ },
+    		{ "Dato de Salida (Resumen)": "Número Máx. Clientes en Cola de Caja", "Valor": stats.maxCashierQueue },
         	{ "Dato de Salida (Resumen)": "Número Máx. Clientes en Cola de Preparación", "Valor": stats.maxPrepQueue },
         	{ "Dato de Salida (Resumen)": "Número Total de Clientes Atendidos", "Valor": dataEntries.length }
     	];
@@ -618,15 +618,15 @@ const App = () => {
                     </p>
                     <ul className="list-disc pl-5 mt-2 text-gray-600 text-sm space-y-2">
                         <li>
-                            **Número Máx. Clientes en Cola de Caja:**
+                            <strong>Número Máx. Clientes en Cola de Caja:</strong>
                             <span className="font-bold text-indigo-600 text-lg ml-2">{stats.maxCashierQueue}</span>
                         </li>
                         <li>
-                            **Número Máx. Clientes en Cola de Preparación:**
+                            <strong>Número Máx. Clientes en Cola de Preparación:</strong>
                             <span className="font-bold text-yellow-600 text-lg ml-2">{stats.maxPrepQueue}</span>
                         </li>
                         <li>
-                            **Número Total de Clientes Atendidos (Guardados):**
+                            <strong>Número Total de Clientes Atendidos (Guardados):</strong>
                             <span className="font-bold text-gray-700 text-lg ml-2">{dataEntries.length}</span>
                         </li>
                     </ul>
