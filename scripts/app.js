@@ -62,21 +62,21 @@ const formatTimestamp = (ts) => {
 const createNewEntry = (arrivalTimestamp) => ({
     id: arrivalTimestamp + '-' + Math.random().toString(36).substring(2, 9),
     // Tiempos (Timestamps)
-    arrivalTimestamp: arrivalTimestamp,  // A
-    cashierStartTimestamp: null,         // S1
-    cashierEndTimestamp: null,           // E1
-    prepStartTimestamp: null,            // S2
-    prepEndTimestamp: null,              // E2
+    arrivalTimestamp: arrivalTimestamp, 	// A
+    cashierStartTimestamp: null, 	 	// S1
+    cashierEndTimestamp: null, 	 	// E1
+    prepStartTimestamp: null, 	 	// S2
+    prepEndTimestamp: null, 	 	// E2
     
     // Datos de Entrada
-    iceCreamCategory: 'HELADO_BOCHAS', // Categoría
+    iceCreamCategory: 'HELADO_BOCHAS', // Categoría inicial (por defecto)
     
     // Datos de Salida (Calculados)
-    cashierWaitTimeMs: null,     // S1 - A
-    cashierServiceTimeMs: null,  // E1 - S1
-    prepWaitTimeMs: null,        // S2 - E1
-    prepServiceTimeMs: null,     // E2 - S2
-    totalTimeInSystemMs: null,   // E2 - A
+    cashierWaitTimeMs: null, 	 // S1 - A
+    cashierServiceTimeMs: null, 	// E1 - S1
+    prepWaitTimeMs: null, 	 	// S2 - E1 (Será 0 si termina en caja)
+    prepServiceTimeMs: null, 	// E2 - S2 (Será 0 si termina en caja)
+    totalTimeInSystemMs: null, 	// E2 - A o E1 - A
     
     status: 'Esperando caja', // Estado para seguimiento de colas
 });
@@ -84,7 +84,7 @@ const createNewEntry = (arrivalTimestamp) => ({
 // Categorías de helado actualizadas
 const iceCreamCategories = [
     { value: 'HELADO_BOCHAS', label: 'Helado en Bochas (Necesita preparación)' },
-    { value: 'PRODUCTO_HELADO', label: 'Producto Helado (Ej: Paleta, Bombón)' },
+    { value: 'PRODUCTO_HELADO', label: 'Producto Helado (Ej: Paleta, Bombón, TERMINA AQUÍ)' },
 ];
 
 
@@ -152,7 +152,7 @@ const App = () => {
     }, [notification]);
     
     // --- Efecto para limpiar errores ---
-     useEffect(() => {
+    useEffect(() => {
         if (error) {
             const timer = setTimeout(() => setError(''), 3000);
             return () => clearTimeout(timer);
@@ -161,7 +161,9 @@ const App = () => {
 
     // --- EFECTO: Seguimiento de Colas ---
     useEffect(() => {
+        // La cola de caja solo cuenta a los que están 'Esperando caja'
         const cashierQueueLen = activeEntries.filter(e => e.status === 'Esperando caja').length;
+        // La cola de preparación solo cuenta a los que están 'Esperando preparación (o en cola)'
         const prepQueueLen = activeEntries.filter(e => e.status === 'Esperando preparación (o en cola)').length;
 
         let statsChanged = false;
@@ -217,25 +219,50 @@ const App = () => {
         });
     };
 
-    // 3. Fin Servicio Caja (E1)
+    // 3. Fin Servicio Caja (E1) -> Punto de Decisión
     const handleCashierEnd = (id) => {
         const now = Date.now();
         const entry = activeEntries.find(e => e.id === id);
         if (!entry || !entry.cashierStartTimestamp) return;
 
         const serviceTime = now - entry.cashierStartTimestamp;
-        updateActiveEntry(id, {
+        
+        let newStatus;
+        let updates = {
             cashierEndTimestamp: now,
             cashierServiceTimeMs: serviceTime,
-            status: 'Esperando preparación (o en cola)',
-        });
+        };
+        
+        // --- LÓGICA DE DECISIÓN CLAVE ---
+        if (entry.iceCreamCategory === 'PRODUCTO_HELADO') {
+            // Caso 1: Producto Helado (TERMINA AQUÍ)
+            updates = {
+                ...updates,
+                prepStartTimestamp: now, // Simulamos S2=E1 para cálculos
+                prepEndTimestamp: now,   // Simulamos E2=E1 para cálculos
+                prepWaitTimeMs: 0, 
+                prepServiceTimeMs: 0,
+                totalTimeInSystemMs: now - entry.arrivalTimestamp,
+                status: 'Listo para guardar (Salida en Caja)',
+            };
+        } else {
+            // Caso 2: Helado en Bochas (VA A PREPARACIÓN)
+            updates = {
+                ...updates,
+                status: 'Esperando preparación (o en cola)',
+            };
+        }
+        // -----------------------------
+        
+        updateActiveEntry(id, updates);
     };
     
     // 4. Inicio Servicio Preparación (S2)
     const handlePrepStart = (id) => {
         const now = Date.now();
         const entry = activeEntries.find(e => e.id === id);
-        if (!entry || !entry.cashierEndTimestamp) return;
+        // Debe haber terminado caja y ser un producto que necesita preparación
+        if (!entry || !entry.cashierEndTimestamp || entry.iceCreamCategory === 'PRODUCTO_HELADO') return;
 
         const prepWaitTime = now - entry.cashierEndTimestamp;
         updateActiveEntry(id, {
@@ -249,7 +276,8 @@ const App = () => {
     const handlePrepEnd = (id) => {
         const now = Date.now();
         const entry = activeEntries.find(e => e.id === id);
-        if (!entry || !entry.prepStartTimestamp) return;
+        // Debe haber comenzado preparación y no ser un producto que terminó en caja
+        if (!entry || !entry.prepStartTimestamp || entry.iceCreamCategory === 'PRODUCTO_HELADO') return;
         
         const serviceTime = now - entry.prepStartTimestamp;
         const totalTime = now - entry.arrivalTimestamp;
@@ -261,15 +289,29 @@ const App = () => {
         });
     };
 
+    // Cambio de Categoría (Ahora disponible para clientes en "Esperando caja" o "Caja en servicio")
     const handleCategoryChange = (id, newCategory) => {
+        // Importante: No permitir cambiar la categoría si ya terminó la caja.
+        const entry = activeEntries.find(e => e.id === id);
+        if (entry && entry.cashierEndTimestamp) {
+            setError("No se puede cambiar la categoría después de finalizar el servicio de caja (E1).");
+            return;
+        }
         updateActiveEntry(id, { iceCreamCategory: newCategory });
     };
 
     // 6. Guardar Registro
     const saveEntry = (id) => {
         const entryToSave = activeEntries.find(e => e.id === id);
-        if (!entryToSave || !entryToSave.prepEndTimestamp) {
-            setError("Debe completar el flujo completo (Llegada a Fin Preparación) para guardar.");
+        
+        // El cliente está listo si:
+        // 1. Es producto helado (debió haber completado E1, y el E2/S2 se llenó en handleCashierEnd)
+        // 2. Es bochas y completó E2
+        const isReadyToSave = (entryToSave && entryToSave.iceCreamCategory === 'PRODUCTO_HELADO' && entryToSave.cashierEndTimestamp) || 
+                              (entryToSave && entryToSave.iceCreamCategory === 'HELADO_BOCHAS' && entryToSave.prepEndTimestamp);
+        
+        if (!isReadyToSave) {
+            setError("Debe completar el flujo completo (Llegada a Fin Caja para Producto Helado, o a Fin Preparación para Bochas) para guardar.");
             return;
         }
 
@@ -288,6 +330,7 @@ const App = () => {
         // 2. Eliminar de registros activos
         setActiveEntries(prev => prev.filter(entry => entry.id !== id));
         setError('');
+        setNotification(`Registro ${id.split('-')[1]} guardado correctamente.`);
     };
 
     // --- Funciones del Modal ---
@@ -311,7 +354,7 @@ const App = () => {
 
     // Eliminar Registro Guardado
     const handleDeleteSaved = (id) => {
-         setModalState({
+        setModalState({
             isOpen: true,
             message: `¿Seguro que quieres eliminar el registro ${id.split('-')[1]} de la base de datos local?`,
             onConfirm: () => {
@@ -326,7 +369,7 @@ const App = () => {
     
     // Resetear Estadísticas de Colas
     const resetStats = () => {
-         setModalState({
+        setModalState({
             isOpen: true,
             message: `¿Seguro que quieres reiniciar los contadores de "Máximo en Cola"?`,
             onConfirm: () => {
@@ -338,7 +381,7 @@ const App = () => {
         });
     };
 
-    //FUNCIÓN PARA BORRAR TODO
+    // FUNCIÓN PARA BORRAR TODO
     const confirmDeleteAllData = () => {
         setModalState({
             isOpen: true,
@@ -346,11 +389,11 @@ const App = () => {
             onConfirm: () => {
                 // Limpiar LocalStorage
                 try {
-                  localStorage.removeItem(STORAGE_KEY_DATA);
-                  localStorage.removeItem(STORAGE_KEY_STATS);
+                    localStorage.removeItem(STORAGE_KEY_DATA);
+                    localStorage.removeItem(STORAGE_KEY_STATS);
                 } catch (e) {
-                  setError("Error al borrar datos al limpiar el almacenamiento local");
-                  console.error("Error al borrar localstorage:", e);
+                    setError("Error al borrar datos al limpiar el almacenamiento local");
+                    console.error("Error al borrar localstorage:", e);
                 }
 
                 // Limpiar Estados
@@ -479,7 +522,7 @@ const App = () => {
             <header className="bg-indigo-700 text-white p-4 shadow-lg sticky top-0 z-10">
                 <h1 className="text-2xl font-bold text-center">Registro de Colas (Multicliente)</h1>
                 <p className="text-sm text-center opacity-80 mt-1">
-                    Flujo: Llegada &rarr; Caja &rarr; Preparación &rarr; Salida
+                    Flujo: Llegada &rarr; Caja &rarr; Preparación / Salida
                 </p>
             </header>
 
@@ -625,14 +668,41 @@ const ActiveEntryCard = ({
 
     const arrivalTime = formatTimestamp(arrivalTimestamp).time;
     const uniqueId = id.split('-')[1] || id; 
-    const isReadyToSave = !!prepEndTimestamp;
     
-    // Deshabilitar botones según el estado
+    // El cliente está listo si terminó en caja (producto helado) O terminó preparación (bochas)
+    const isProductHelado = iceCreamCategory === 'PRODUCTO_HELADO';
+    const isReadyToSave = (isProductHelado && !!cashierEndTimestamp) || (!!prepEndTimestamp);
+
+    // Deshabilitar botones según el estado y el tipo de producto
     const canStartCashier = !cashierStartTimestamp;
     const canEndCashier = cashierStartTimestamp && !cashierEndTimestamp;
-    const canStartPrep = cashierEndTimestamp && !prepStartTimestamp;
-    const canEndPrep = prepStartTimestamp && !prepEndTimestamp;
-    const canSave = prepEndTimestamp;
+    
+    const canChangeCategory = !cashierEndTimestamp; // Solo se puede cambiar antes de E1
+
+    // Lógica condicional para Preparación
+    const needsPreparation = iceCreamCategory === 'HELADO_BOCHAS';
+    const isFinishedInCashier = isProductHelado && !!cashierEndTimestamp;
+    
+    const canStartPrep = needsPreparation && cashierEndTimestamp && !prepStartTimestamp;
+    const canEndPrep = needsPreparation && prepStartTimestamp && !prepEndTimestamp;
+    const canSave = isReadyToSave;
+
+
+    // Determinar qué botón de SALIDA/Guardar mostrar:
+    const showPrepButtons = needsPreparation;
+    const showSaveAfterCashier = isProductHelado && !!cashierEndTimestamp;
+    
+    // Determinar el mensaje de estado
+    let statusText = status;
+    let statusColor = 'bg-yellow-100 text-yellow-700';
+    if (isReadyToSave) {
+        statusText = isProductHelado ? 'LISTO (Salió en Caja)' : 'LISTO (Salió en Preparación)';
+        statusColor = 'bg-green-100 text-green-700';
+    } else if (isFinishedInCashier) {
+        statusText = 'Listo para guardar (Salida en Caja)';
+        statusColor = 'bg-green-100 text-green-700';
+    }
+
 
     return (
         <div className="card border-t-4 border-indigo-500">
@@ -640,8 +710,8 @@ const ActiveEntryCard = ({
                 <h3 className="text-lg font-bold text-indigo-700">
                     Cliente <span className="font-mono text-base bg-indigo-100 px-2 py-0.5 rounded-md align-middle">{uniqueId}</span>
                 </h3>
-                <span className={`text-xs font-bold px-2 py-1 rounded-full ${isReadyToSave ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                    {status}
+                <span className={`text-xs font-bold px-2 py-1 rounded-full ${statusColor}`}>
+                    {statusText}
                 </span>
             </div>
             <p className="text-xs text-gray-600 -mt-1 mb-3">
@@ -658,6 +728,7 @@ const ActiveEntryCard = ({
                     value={iceCreamCategory}
                     onChange={(e) => onCategoryChange(id, e.target.value)}
                     className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md shadow-sm disabled:bg-gray-200"
+                    disabled={!canChangeCategory} // Deshabilitar si ya terminó caja
                 >
                     {iceCreamCategories.map(option => (
                         <option key={option.value} value={option.value}>{option.label}</option>
@@ -667,21 +738,34 @@ const ActiveEntryCard = ({
             
             {/* Botones de Flujo */}
             <div className="space-y-2">
+                {/* Botones de Caja */}
                 <button onClick={() => onCashierStart(id)} disabled={!canStartCashier} className={`btn btn-secondary ${!canStartCashier ? 'btn-disabled' : ''}`}>
                     2. Iniciar Caja (S1)
                 </button>
                 <button onClick={() => onCashierEnd(id)} disabled={!canEndCashier} className={`btn btn-secondary ${!canEndCashier ? 'btn-disabled' : ''}`}>
                     3. Fin Caja (E1)
                 </button>
-                <button onClick={() => onPrepStart(id)} disabled={!canStartPrep} className={`btn btn-secondary ${!canStartPrep ? 'btn-disabled' : ''}`}>
-                    4. Iniciar Preparación (S2)
-                </button>
-                <button onClick={() => onPrepEnd(id)} disabled={!canEndPrep} className={`btn btn-secondary ${!canEndPrep ? 'btn-disabled' : ''}`}>
-                    5. Fin Preparación / SALIDA (E2)
-                </button>
-                <button onClick={() => onSave(id)} disabled={!canSave} className={`btn btn-success ${!canSave ? 'btn-disabled' : ''}`}>
-                    6. Guardar Registro
-                </button>
+                
+                {/* Botones de Preparación (Solo si es Helado en Bochas) */}
+                {showPrepButtons && (
+                    <React.Fragment>
+                        <hr className="my-2 border-dashed" />
+                        <button onClick={() => onPrepStart(id)} disabled={!canStartPrep} className={`btn btn-secondary ${!canStartPrep ? 'btn-disabled' : ''}`}>
+                            4. Iniciar Preparación (S2)
+                        </button>
+                        <button onClick={() => onPrepEnd(id)} disabled={!canEndPrep} className={`btn btn-secondary ${!canEndPrep ? 'btn-disabled' : ''}`}>
+                            5. Fin Preparación / SALIDA (E2)
+                        </button>
+                    </React.Fragment>
+                )}
+                
+                {/* Botón de Guardar (Se habilita si terminó en E1 o E2) */}
+                {(showSaveAfterCashier || canSave) && (
+                    <button onClick={() => onSave(id)} disabled={!canSave} className={`btn btn-success ${!canSave ? 'btn-disabled' : ''}`}>
+                        6. Guardar Registro y Salida
+                    </button>
+                )}
+                
                 <button onClick={() => onCancel(id)} className="btn btn-danger bg-red-500 hover:bg-red-600">
                     Cancelar (No Guardar)
                 </button>
@@ -694,8 +778,9 @@ const ActiveEntryCard = ({
                     <div className="grid grid-cols-2 gap-2 text-xs">
                         {cashierWaitTimeMs !== null && <TimeChip label="Espera Caja" time={cashierWaitTimeMs} color="indigo" />}
                         {cashierServiceTimeMs !== null && <TimeChip label="Servicio Caja" time={cashierServiceTimeMs} color="indigo" />}
-                        {prepWaitTimeMs !== null && <TimeChip label="Espera Prep." time={prepWaitTimeMs} color="yellow" />}
-                        {prepServiceTimeMs !== null && <TimeChip label="Servicio Prep." time={prepServiceTimeMs} color="yellow" />}
+                        {needsPreparation && prepWaitTimeMs !== null && <TimeChip label="Espera Prep." time={prepWaitTimeMs} color="yellow" />}
+                        {needsPreparation && prepServiceTimeMs !== null && <TimeChip label="Servicio Prep." time={prepServiceTimeMs} color="yellow" />}
+                        {!needsPreparation && isFinishedInCashier && <TimeChip label="Salida Inmediata" time={0} color="gray" />}
                     </div>
                     {totalTimeInSystemMs !== null && (
                         <div className="bg-green-100 p-2 rounded mt-2 text-center">
@@ -730,35 +815,40 @@ const TimeChip = ({ label, time, color }) => {
 
 
 // --- Sub-componente: Fila de Registro Guardado ---
-const SavedEntryRow = ({ entry, onDelete }) => (
-    <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-sm">
-        <div className="flex justify-between items-center mb-2">
-            <p className="text-sm font-bold text-gray-700">
-                {entry.iceCreamCategory}
-                <span className="font-mono text-xs bg-gray-100 px-2 py-0.5 rounded-md align-middle ml-2">{entry.id.split('-')[1]}</span>
+const SavedEntryRow = ({ entry, onDelete }) => {
+    const isProductHelado = entry.iceCreamCategory === 'PRODUCTO_HELADO';
+    
+    return (
+        <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-sm">
+            <div className="flex justify-between items-center mb-2">
+                <p className="text-sm font-bold text-gray-700">
+                    {entry.iceCreamCategory}
+                    <span className="font-mono text-xs bg-gray-100 px-2 py-0.5 rounded-md align-middle ml-2">{entry.id.split('-')[1]}</span>
+                </p>
+                <button
+                    onClick={() => onDelete(entry.id)}
+                    className="text-red-500 hover:text-red-700 text-xs font-semibold px-2 py-1 rounded-full bg-red-100"
+                >
+                    Eliminar
+                </button>
+            </div>
+            <p className="text-xs text-gray-500 mb-2">
+                Llegada: {formatTimestamp(entry.arrivalTimestamp).date} {formatTimestamp(entry.arrivalTimestamp).time}
             </p>
-            <button
-                onClick={() => onDelete(entry.id)}
-                className="text-red-500 hover:text-red-700 text-xs font-semibold px-2 py-1 rounded-full bg-red-100"
-            >
-                Eliminar
-            </button>
+            <div className="grid grid-cols-2 gap-1 text-xs">
+                <TimeChip label="Espera Caja" time={entry.cashierWaitTimeMs} color="indigo" />
+                <TimeChip label="Servicio Caja" time={entry.cashierServiceTimeMs} color="indigo" />
+                {!isProductHelado && <TimeChip label="Espera Prep." time={entry.prepWaitTimeMs} color="yellow" />}
+                {!isProductHelado && <TimeChip label="Servicio Prep." time={entry.prepServiceTimeMs} color="yellow" />}
+                {isProductHelado && <TimeChip label="Salida Inmediata" time={0} color="gray" />}
+            </div>
+            <div className="bg-green-100 p-2 rounded mt-2 text-center">
+                <p className="text-gray-700 font-medium text-xs">Tiempo Total:</p>
+                <p className="font-mono text-base text-green-700 font-bold">{formatDuration(entry.totalTimeInSystemMs)}</p>
+            </div>
         </div>
-        <p className="text-xs text-gray-500 mb-2">
-            Llegada: {formatTimestamp(entry.arrivalTimestamp).date} {formatTimestamp(entry.arrivalTimestamp).time}
-        </p>
-        <div className="grid grid-cols-2 gap-1 text-xs">
-            <TimeChip label="Espera Caja" time={entry.cashierWaitTimeMs} color="indigo" />
-            <TimeChip label="Servicio Caja" time={entry.cashierServiceTimeMs} color="indigo" />
-            <TimeChip label="Espera Prep." time={entry.prepWaitTimeMs} color="yellow" />
-            <TimeChip label="Servicio Prep." time={entry.prepServiceTimeMs} color="yellow" />
-        </div>
-        <div className="bg-green-100 p-2 rounded mt-2 text-center">
-            <p className="text-gray-700 font-medium text-xs">Tiempo Total:</p>
-            <p className="font-mono text-base text-green-700 font-bold">{formatDuration(entry.totalTimeInSystemMs)}</p>
-        </div>
-    </div>
-);
+    );
+};
 
 
 // --- Montar la Aplicación React ---
