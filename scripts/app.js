@@ -406,93 +406,102 @@ const App = () => {
     }
 
     // --- FUNCIÓN DE EXPORTACIÓN A EXCEL ---
-    const exportToExcel = () => {
-        if (dataEntries.length === 0) {
-            setError("No hay datos para exportar.");
-            return;
-        }
-        
-        // Comprobar si XLSX está disponible (cargado desde el script)
-        // Usamos 'window.XLSX' para ser explícitos
-        if (typeof window.XLSX === 'undefined') {
-            setError("La biblioteca de Excel (XLSX) no se ha cargado. Revisa la conexión o el script.");
-            return;
-        }
-
-        // 1. Preparar Hoja 1: Registros Completos
-        const headers1 = [
-            'ID Cliente', 'Categoría Helado', 
-            'Fecha Llegada', 'Hora Llegada', 
-            'Timestamp Llegada (A)', 
-            'Timestamp Inicio Caja (S1)', 
-            'Timestamp Fin Caja (E1)', 
-            'Timestamp Inicio Prep (S2)', 
-            'Timestamp Fin Prep (E2)', 
-            'Tiempo Espera Caja (ms)', 
-            'Tiempo Servicio Caja (ms)', 
-            'Tiempo Espera Prep (ms)', 
-            'Tiempo Servicio Prep (ms)',
-            'Tiempo Total Sistema (ms)',
-        ];
-        
-        const formattedData = dataEntries.map(entry => {
-            const llegada = formatTimestamp(entry.arrivalTimestamp);
-            return {
-                'ID Cliente': entry.id,
-                'Categoría Helado': entry.iceCreamCategory,
-                'Fecha Llegada': llegada.date,
-                'Hora Llegada': llegada.time,
-                'Timestamp Llegada (A)': entry.arrivalTimestamp,
-                'Timestamp Inicio Caja (S1)': entry.cashierStartTimestamp,
-                'Timestamp Fin Caja (E1)': entry.cashierEndTimestamp,
-                'Timestamp Inicio Prep (S2)': entry.prepStartTimestamp,
-                'Timestamp Fin Prep (E2)': entry.prepEndTimestamp,
-                'Tiempo Espera Caja (ms)': entry.cashierWaitTimeMs,
-                'Tiempo Servicio Caja (ms)': entry.cashierServiceTimeMs,
-                'Tiempo Espera Prep (ms)': entry.prepWaitTimeMs,
-                'Tiempo Servicio Prep (ms)': entry.prepServiceTimeMs,
-                'Tiempo Total Sistema (ms)': entry.totalTimeInSystemMs,
-            };
-        });
-
-        const ws1 = window.XLSX.utils.json_to_sheet(formattedData, { 
-            header: headers1, 
-            skipHeader: false 
-        });
-        
-        window.XLSX.utils.sheet_add_aoa(ws1, [headers1], { origin: "A1" });
-
-        const colWidths1 = headers1.map(h => ({ wch: Math.max(h.length, 22) }));
-        ws1['!cols'] = colWidths1;
-
-        // 2. Preparar Hoja 2: Resumen de Salidas
-        const headers2 = ["Dato de Salida (Resumen)", "Valor"];
-        const summaryData = [
-            { "Dato de Salida (Resumen)": "Número Máx. Clientes en Cola de Caja", "Valor": stats.maxCashierQueue },
-            { "Dato de Salida (Resumen)": "Número Máx. Clientes en Cola de Preparación", "Valor": stats.maxPrepQueue },
-            { "Dato de Salida (Resumen)": "Número Total de Clientes Atendidos", "Valor": dataEntries.length }
-        ];
-        
-        const ws2 = window.XLSX.utils.json_to_sheet(summaryData, { header: headers2, skipHeader: true });
-        window.XLSX.utils.sheet_add_aoa(ws2, [headers2], { origin: "A1" });
-        ws2['!cols'] = [{ wch: 45 }, { wch: 10 }];
-
-        // 3. Crear y Descargar el Libro
-        try {
-            const wb = window.XLSX.utils.book_new();
-            window.XLSX.utils.book_append_sheet(wb, ws1, "Registros Completos");
-            window.XLSX.utils.book_append_sheet(wb, ws2, "Resumen de Salidas");
-            
-            const fileName = `Datos_Simulacion_Heladeria_${new Date().toISOString().split('T')[0]}.xlsx`;
-            
-            window.XLSX.writeFile(wb, fileName);
-            
-            setNotification("Datos exportados a Excel correctamente.");
-        } catch (err) {
-            console.error("Error al exportar a Excel:", err);
-            setError("Error al generar el archivo Excel. Revisa la consola.");
-        }
-    };
+	const exportToExcel = () => {
+    	if (dataEntries.length === 0) {
+        	setError("No hay datos para exportar.");
+        	return;
+    	}
+    	
+    	// Comprobar si XLSX está disponible (cargado desde el script)
+    	// Usamos 'window.XLSX' para ser explícitos
+    	if (typeof window.XLSX === 'undefined') {
+        	setError("La biblioteca de Excel (XLSX) no se ha cargado. Revisa la conexión o el script.");
+        	return;
+    	}
+	
+    	// --- FUNCIONES HELPER PARA EXPORTACIÓN ---
+    	// Devuelve solo la hora (HH:MM:SS) o 'N/A'
+    	const formatTimeOnly = (ts) => {
+        	if (!ts) return 'N/A';
+        	// Usamos formatTimestamp que ya está definido y devuelve la hora en formato 24h
+        	return formatTimestamp(ts).time;
+    	};
+	
+	
+    	// 1. Preparar Hoja 1: Registros Completos
+    	const headers1 = [
+        	'ID Cliente', 'Categoría Helado', 
+        	'Fecha Llegada', 'Hora Llegada (A)', 
+        	'Hora Inicio Caja (S1)', 
+        	'Hora Fin Caja (E1)', 
+        	'Hora Inicio Prep. (S2)', 
+        	'Hora Fin Prep. (E2)', 
+        	'Tiempo Espera Caja (ms)', 
+        	'Tiempo Servicio Caja (ms)', 
+        	'Tiempo Espera Prep. (ms)', 
+        	'Tiempo Servicio Prep. (ms)',
+        	'Tiempo Total Sistema (ms)',
+    	];
+    	
+    	const formattedData = dataEntries.map(entry => {
+        	const llegada = formatTimestamp(entry.arrivalTimestamp);
+        	return {
+            	'ID Cliente': entry.id,
+            	'Categoría Helado': entry.iceCreamCategory,
+            	'Fecha Llegada': llegada.date,
+            	'Hora Llegada (A)': llegada.time, // Usamos la hora de llegada ya formateada
+            	// Se reemplazan los Timestamps por la Hora:Minuto:Segundo
+            	'Hora Inicio Caja (S1)': formatTimeOnly(entry.cashierStartTimestamp),
+            	'Hora Fin Caja (E1)': formatTimeOnly(entry.cashierEndTimestamp),
+            	'Hora Inicio Prep. (S2)': formatTimeOnly(entry.prepStartTimestamp),
+            	'Hora Fin Prep. (E2)': formatTimeOnly(entry.prepEndTimestamp),
+            	'Tiempo Espera Caja (ms)': entry.cashierWaitTimeMs,
+            	'Tiempo Servicio Caja (ms)': entry.cashierServiceTimeMs,
+            	'Tiempo Espera Prep. (ms)': entry.prepWaitTimeMs,
+            	'Tiempo Servicio Prep. (ms)': entry.prepServiceTimeMs,
+            	'Tiempo Total Sistema (ms)': entry.totalTimeInSystemMs,
+        	};
+    	});
+	
+    	const ws1 = window.XLSX.utils.json_to_sheet(formattedData, { 
+        	header: headers1, 
+        	skipHeader: false 
+    	});
+    	
+    	window.XLSX.utils.sheet_add_aoa(ws1, [headers1], { origin: "A1" });
+	
+    	const colWidths1 = headers1.map(h => ({ wch: Math.max(h.length, 22) }));
+    	ws1['!cols'] = colWidths1;
+	
+    	// 2. Preparar Hoja 2: Resumen de Salidas
+    	const headers2 = ["Dato de Salida (Resumen)", "Valor"];
+    	const summaryData = [
+        	// AÑADIDO: Máximo en Cola de Caja
+        	{ "Dato de Salida (Resumen)": "Número Máx. Clientes en Cola de Caja", "Valor": stats.maxCashierQueue },
+        	{ "Dato de Salida (Resumen)": "Número Máx. Clientes en Cola de Preparación", "Valor": stats.maxPrepQueue },
+        	{ "Dato de Salida (Resumen)": "Número Total de Clientes Atendidos", "Valor": dataEntries.length }
+    	];
+    	
+    	const ws2 = window.XLSX.utils.json_to_sheet(summaryData, { header: headers2, skipHeader: true });
+    	window.XLSX.utils.sheet_add_aoa(ws2, [headers2], { origin: "A1" });
+    	ws2['!cols'] = [{ wch: 45 }, { wch: 10 }];
+	
+    	// 3. Crear y Descargar el Libro
+    	try {
+        	const wb = window.XLSX.utils.book_new();
+        	window.XLSX.utils.book_append_sheet(wb, ws1, "Registros Completos");
+        	window.XLSX.utils.book_append_sheet(wb, ws2, "Resumen de Salidas");
+        	
+        	const fileName = `Datos_Simulacion_Heladeria_${new Date().toISOString().split('T')[0]}.xlsx`;
+        	
+        	window.XLSX.writeFile(wb, fileName);
+        	
+        	setNotification("Datos exportados a Excel correctamente.");
+    	} catch (err) {
+        	console.error("Error al exportar a Excel:", err);
+        	setError("Error al generar el archivo Excel. Revisa la consola.");
+    	}
+	};
 
     // --- Renderizado ---
     if (isLoading) {
